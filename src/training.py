@@ -27,9 +27,9 @@ from src.config import DATA_FILE, MODEL_DIR, BEST_MODEL_PATH, FEATURES_PATH, CV_
 from src.preprocessing import data_load, split_data, build_preprocessor
 
 
-
+# ──────────────────────────────────────────────────────────────────
 # 1. Model Definitions
-
+# ──────────────────────────────────────────────────────────────────
 
 def get_models_and_params() -> List[Tuple[str, object, Dict[str, List]]]:
     """
@@ -41,26 +41,26 @@ def get_models_and_params() -> List[Tuple[str, object, Dict[str, List]]]:
     """
     models_and_params = []
 
-    # - Linear Regression (baseline — no hyperparams to tune)
+    # ── Linear Regression (baseline — no hyperparams to tune)
     lr = LinearRegression()
     lr_params = {}
     models_and_params.append(("linear_regression", lr, lr_params))
 
-    # - Ridge Regression (regularized linear)
+    # ── Ridge Regression (regularized linear)
     ridge = Ridge()
     ridge_params = {"clf__alpha": [0.1, 1.0, 10.0, 100.0]}
     models_and_params.append(("ridge_regression", ridge, ridge_params))
 
-    # - Decision Tree Regressor ✅ required by project guidelines
+    # ── Decision Tree Regressor ✅ required by project guidelines
     dtr = DecisionTreeRegressor(random_state=42)
     dtr_params = {
-        "clf__max_depth"       : [None, 5, 10, 15],
+        "clf__max_depth"        : [None, 5, 10, 15],
         "clf__min_samples_split": [2, 5, 10],
-        "clf__criterion"       : ["squared_error", "absolute_error"],
+        "clf__criterion"        : ["squared_error", "absolute_error"],
     }
     models_and_params.append(("decision_tree", dtr, dtr_params))
 
-    # - Random Forest Regressor ✅ required by project guidelines
+    # ── Random Forest Regressor ✅ required by project guidelines
     rfr = RandomForestRegressor(random_state=42)
     rfr_params = {
         "clf__n_estimators": [100, 200],
@@ -69,7 +69,7 @@ def get_models_and_params() -> List[Tuple[str, object, Dict[str, List]]]:
     }
     models_and_params.append(("random_forest", rfr, rfr_params))
 
-    # - Gradient Boosting Regressor (bonus — strong performer)
+    # ── Gradient Boosting Regressor (bonus — strong performer)
     gbr = GradientBoostingRegressor(random_state=42)
     gbr_params = {
         "clf__n_estimators" : [100, 200],
@@ -81,7 +81,9 @@ def get_models_and_params() -> List[Tuple[str, object, Dict[str, List]]]:
     return models_and_params
 
 
+# ──────────────────────────────────────────────────────────────────
 # 2. Evaluation Helper
+# ──────────────────────────────────────────────────────────────────
 
 def evaluate_regression(y_true: pd.Series, y_pred: np.ndarray) -> Dict[str, float]:
     """
@@ -94,10 +96,13 @@ def evaluate_regression(y_true: pd.Series, y_pred: np.ndarray) -> Dict[str, floa
     - RMSE : Root Mean Squared Error
     - R2   : R² Score
 
+    NOTE: y_true and y_pred are in LOG scale.
+          Metrics are computed in log scale for model comparison.
+
     Parameters
     ----------
-    y_true : pd.Series   - actual Price values
-    y_pred : np.ndarray  - predicted Price values
+    y_true : pd.Series   — actual log(Price) values
+    y_pred : np.ndarray  — predicted log(Price) values
 
     Returns
     -------
@@ -111,19 +116,20 @@ def evaluate_regression(y_true: pd.Series, y_pred: np.ndarray) -> Dict[str, floa
     }
 
 
-
+# ──────────────────────────────────────────────────────────────────
 # 3. Main Training Function
-
+# ──────────────────────────────────────────────────────────────────
 
 def train_and_select_model() -> pd.DataFrame:
     """
     Full training pipeline:
       1. Load data
-      2. Train/test split
-      3. Build preprocessor
-      4. Train each model with GridSearchCV
-      5. Evaluate with MAE, MSE, RMSE, R2
-      6. Save best model overall
+      2. Log-transform Price (fixes skewness & negative R2 issue)
+      3. Train/test split
+      4. Build preprocessor
+      5. Train each model with GridSearchCV
+      6. Evaluate with MAE, MSE, RMSE, R2
+      7. Save best model overall
 
     Returns
     -------
@@ -132,27 +138,33 @@ def train_and_select_model() -> pd.DataFrame:
     """
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
-    # - Load data
+    # ── Load data
     print("Loading pre-cleaned data ->", DATA_FILE)
     df = data_load(DATA_FILE)
     print("Data shape  :", df.shape)
     print("Columns     :", df.columns.tolist())
 
-    # - Split
+    # ── ✅ Log-transform Price before splitting
+    # Fixes skewness and resolves negative R2 scores
+    print(f"\nPrice before log → min: {df['Price'].min():.2f} | max: {df['Price'].max():.2f} | mean: {df['Price'].mean():.2f}")
+    df['Price'] = np.log1p(df['Price'])
+    print(f"Price after  log → min: {df['Price'].min():.4f} | max: {df['Price'].max():.4f} | mean: {df['Price'].mean():.4f}\n")
+
+    # ── Split
     X_train, X_test, y_train, y_test = split_data(df)
 
-    # - Save feature columns for inference alignment
+    # ── Save feature columns for inference alignment
     feature_cols = X_train.columns.tolist()
     with open(FEATURES_PATH, "w", encoding="utf-8") as f:
         json.dump(feature_cols, f, ensure_ascii=False, indent=2)
     print(f"Saved feature list ({len(feature_cols)} cols) -> {FEATURES_PATH}")
     print(f"Train shape : {X_train.shape} | Test shape: {X_test.shape}")
 
-    # - Build preprocessor
+    # ── Build preprocessor
     preprocessor = build_preprocessor(X_train)
     print("Preprocessor built.\n")
 
-    # - Train all models
+    # ── Train all models
     models_and_params = get_models_and_params()
 
     best_overall  = None
@@ -168,29 +180,29 @@ def train_and_select_model() -> pd.DataFrame:
             ("clf",        estimator),
         ])
 
-        # GridSearchCV - skip if no params (e.g. LinearRegression)
+        # GridSearchCV — skip if no params (e.g. LinearRegression)
         if param_grid:
             grid = GridSearchCV(
                 estimator  = pipeline,
                 param_grid = param_grid,
                 cv         = CV_FOLDS,
-                scoring    = SCORING,     
+                scoring    = SCORING,
                 n_jobs     = N_JOBS,
                 verbose    = 1,
             )
             grid.fit(X_train, y_train)
-            best      = grid.best_estimator_
-            cv_score  = grid.best_score_
+            best     = grid.best_estimator_
+            cv_score = grid.best_score_
             print(f"Best params : {grid.best_params_}")
         else:
-            # No hyperparams - fit directly
+            # No hyperparams — fit directly
             pipeline.fit(X_train, y_train)
             best     = pipeline
             cv_score = None
             print("No hyperparameters to tune — fitted directly.")
 
-        # - Evaluate on test set
-        y_pred    = best.predict(X_test)
+        # ── Evaluate on test set (log scale)
+        y_pred       = best.predict(X_test)
         eval_metrics = evaluate_regression(y_test, y_pred)
 
         print(f"CV Score ({SCORING}) : {cv_score}")
@@ -207,10 +219,10 @@ def train_and_select_model() -> pd.DataFrame:
         results.append({
             "model"   : name,
             "cv_score": cv_score,
-            **eval_metrics,           # MAE, MSE, RMSE, R2 unpacked
+            **eval_metrics,
         })
 
-        # - Track best model by R2
+        # ── Track best model by R2
         if eval_metrics["R2"] > best_r2_score:
             best_r2_score = eval_metrics["R2"]
             best_overall  = best
@@ -226,9 +238,9 @@ def train_and_select_model() -> pd.DataFrame:
     return pd.DataFrame(results)
 
 
-
+# ──────────────────────────────────────────────────────────────────
 # 4. Entry Point
-
+# ──────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     df_results = train_and_select_model()

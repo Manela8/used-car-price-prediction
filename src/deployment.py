@@ -1,10 +1,13 @@
 """
 Deployment utilities for Used Car Price Prediction.
 
-- load_model                       : lazy-load the best trained pipeline
+- load_model                        : lazy-load the best trained pipeline
 - _get_feature_columns_from_pipeline: infer feature list from pipeline or load from feature_columns.json
-- predict_single                   : predict price for a single car (input as dict)
-- predict_batch                    : predict prices for multiple cars (input as DataFrame)
+- predict_single                    : predict price for a single car (input as dict)
+- predict_batch                     : predict prices for multiple cars (input as DataFrame)
+
+NOTE: Model is trained on log1p(Price). Predictions are reversed with expm1()
+      to return actual car prices in original scale (₹).
 """
 
 from typing import Any, Dict, List, Optional
@@ -18,15 +21,17 @@ import pandas as pd
 from src.config import BEST_MODEL_PATH, FEATURES_PATH, MODEL_DIR
 
 
+# ──────────────────────────────────────────────────────────────────
 # Module-level cache (avoid reloading model on every prediction)
+# ──────────────────────────────────────────────────────────────────
 
 _model = None
 _feature_cols_cache: Optional[List[str]] = None
 
 
-
+# ──────────────────────────────────────────────────────────────────
 # 1. Load Model
-
+# ──────────────────────────────────────────────────────────────────
 
 def load_model():
     """
@@ -44,9 +49,9 @@ def load_model():
     return _model
 
 
-
+# ──────────────────────────────────────────────────────────────────
 # 2. Feature Column Resolution
-
+# ──────────────────────────────────────────────────────────────────
 
 def _get_feature_columns_from_pipeline(model) -> Optional[List[str]]:
     """
@@ -104,9 +109,9 @@ def _get_feature_columns_from_pipeline(model) -> Optional[List[str]]:
     return None
 
 
-
+# ──────────────────────────────────────────────────────────────────
 # 3. Input Alignment Helpers
-
+# ──────────────────────────────────────────────────────────────────
 
 def _ensure_input_frame(input_obj: Any, feature_cols: List[str]) -> pd.DataFrame:
     """
@@ -158,9 +163,9 @@ def _coerce_numeric_columns(df: pd.DataFrame, model) -> pd.DataFrame:
     return df
 
 
-
+# ──────────────────────────────────────────────────────────────────
 # 4. Predict Single Car
-
+# ──────────────────────────────────────────────────────────────────
 
 def predict_single(input_data: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -185,7 +190,7 @@ def predict_single(input_data: Dict[str, Any]) -> Dict[str, Any]:
     Returns
     -------
     dict
-        {"predicted_price": <float>}
+        {"predicted_price": <float>} in original ₹ scale
     """
     model = load_model()
 
@@ -203,7 +208,8 @@ def predict_single(input_data: Dict[str, Any]) -> Dict[str, Any]:
     df_input = _coerce_numeric_columns(df_input, model)
 
     try:
-        predicted_price = model.predict(df_input)[0]
+        # ✅ expm1 reverses log1p applied during training
+        predicted_price = np.expm1(model.predict(df_input)[0])
     except Exception as e:
         raise ValueError("Model prediction failed: " + str(e)) from e
 
@@ -212,9 +218,9 @@ def predict_single(input_data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-
+# ──────────────────────────────────────────────────────────────────
 # 5. Predict Batch (multiple cars)
-
+# ──────────────────────────────────────────────────────────────────
 
 def predict_batch(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -228,7 +234,7 @@ def predict_batch(df: pd.DataFrame) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        Original DataFrame with an extra column: 'predicted_price'
+        Original DataFrame with an extra column: 'predicted_price' in original ₹ scale
     """
     model = load_model()
 
@@ -246,13 +252,19 @@ def predict_batch(df: pd.DataFrame) -> pd.DataFrame:
     df_input = _coerce_numeric_columns(df_input, model)
 
     try:
-        predicted_prices = model.predict(df_input)
+        # ✅ expm1 reverses log1p applied during training
+        predicted_prices = np.expm1(model.predict(df_input))
     except Exception as e:
         raise ValueError("Model prediction failed: " + str(e)) from e
 
     out = df.copy()
     out["predicted_price"] = np.round(predicted_prices, 2)
     return out
+
+
+# ──────────────────────────────────────────────────────────────────
+# 6. Entry Point
+# ──────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     print("Testing single prediction...")
@@ -268,4 +280,4 @@ if __name__ == "__main__":
         "CarAge"      : 5,
     }
     result = predict_single(test_input)
-    print("Predicted Price: ₹", result["predicted_price"])
+    print("Predicted Price: ₹", f"{result['predicted_price']:,.2f}")
