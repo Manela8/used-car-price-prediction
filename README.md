@@ -34,7 +34,8 @@ used-car-price-prediction/
 │   └── raw_data.csv         # Original dataset
 ├── models/                  # Saved models (auto-generated after training)
 ├── notebooks/
-│   └── eda.ipynb            # Exploratory Data Analysis notebook
+│   └── data_cleaning.ipynb  #data cleaning
+|   └── eda.ipynb            # Exploratory Data Analysis notebook
 ├── app.py                   # Streamlit web application
 ├── run.bat                  # One-click pipeline runner (Windows)
 ├── requirements.txt         # Python dependencies
@@ -56,7 +57,7 @@ All models were trained on log-transformed Price values and evaluated on a 20% t
 | Decision Tree | 0.6681 | 0.2320 | 0.0988 | 0.3144 |
 
 > ✅ **Best Model: Linear Regression** with R² = 0.8371
-> Metrics are computed in log scale. Predictions are converted back to original ₹ scale using `expm1()`.
+> Metrics are computed in log scale.
 
 ---
 
