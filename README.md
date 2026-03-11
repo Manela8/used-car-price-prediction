@@ -104,11 +104,3 @@ streamlit
 joblib
 ```
 
-Install all with:
-```bash
-pip install -r requirements.txt
-```
-
-## 📄 License
-
-This project is for educational purposes.
